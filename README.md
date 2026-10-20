@@ -9,11 +9,10 @@ Proyek ini dirancang khusus untuk mendemonstrasikan pola **Cache-Aside**, **Dyna
 ## 📌 Ringkasan Penyesuaian Lingkungan (Podman & Host IP)
 
 Pada repositori ini, lingkungan lokal disesuaikan dengan kebutuhan:
-1. **Container Engine**: Menggunakan **Podman** / **Podman Compose** (bukan Docker).
-2. **Host / Binding IP**: Menggunakan IP lokal host: **`192.168.54.202`** (bukan `localhost`).
-3. **MySQL**: Berjalan langsung di laptop/host (port `3306`), **bukan** di dalam container.
-4. **Redis**: Berjalan di dalam Podman container (port `6379:6379`).
-5. **Aplikasi Go**: Berjalan langsung di host via `go run` (port `8080`), binding ke `0.0.0.0:8080` sehingga dapat diakses melalui `http://192.168.54.202:8080` maupun `http://localhost:8080`.
+1. **Container Engine**: Menggunakan **Podman** / **Podman Compose** (hanya Redis yang berjalan di dalam container).
+2. **Redis**: Berjalan di dalam Podman container pada IP **`192.168.54.202:6379`** (port forwarding container).
+3. **MySQL**: Berjalan langsung di laptop/host pada **`localhost:3306`**, **bukan** di dalam container.
+4. **Aplikasi Go**: Berjalan langsung di host via `go run` pada **`http://localhost:8080`**, **bukan** di dalam container.
 
 ---
 
@@ -22,7 +21,7 @@ Pada repositori ini, lingkungan lokal disesuaikan dengan kebutuhan:
 ```
 Client (curl / hey / Postman / Browser)
         │
-        ▼  HTTP (http://192.168.54.202:8080)
+        ▼  HTTP (http://localhost:8080)
 ┌────────────────────────────────────────────────────────┐
 │  Go REST API Server (Chi Router, Slog, Graceful Stop)  │
 │                                                        │
@@ -35,7 +34,7 @@ Client (curl / hey / Postman / Browser)
                 ▼                        ▼
 ┌──────────────────────────────┐  ┌──────────────────────────────┐
 │  Redis 7 (Podman Container)  │  │   MySQL 8.x / MariaDB Lokal  │
-│      192.168.54.202:6379     │  │      192.168.54.202:3306     │
+│      192.168.54.202:6379     │  │        localhost:3306        │
 │   (Cache, Versioning, Limit) │  │  (Categories, Products,     │
 │                              │  │   Orders, Order Items)       │
 └──────────────────────────────┘  └──────────────────────────────┘
@@ -133,7 +132,7 @@ go-redis-caching-case-study/
 
 - **Go**: 1.22 atau lebih baru
 - **Podman**: 4.x / 5.x / 6.x (dengan `podman-compose` atau `podman compose`)
-- **MySQL**: 8.0+ / MariaDB (berjalan di lokal host `192.168.54.202` atau `127.0.0.1`)
+- **MySQL**: 8.0+ / MariaDB (berjalan langsung di host `localhost:3306`)
 - **Hey** (opsional untuk benchmark): `go install github.com/rakyll/hey@latest`
 
 ---
@@ -149,12 +148,12 @@ APP_PORT=8080
 APP_HOST=0.0.0.0
 APP_ENV=development
 
-# MySQL DSN: ganti password sesuai setup MySQL lokal Anda
-MYSQL_DSN=root:password@tcp(192.168.54.202:3306)/redis_case?parseTime=true&charset=utf8mb4
+# MySQL DSN: sesuaikan dengan MySQL lokal Anda (berjalan di host, bukan container)
+MYSQL_DSN=root:password@tcp(localhost:3306)/redis_case?parseTime=true&charset=utf8mb4
 MYSQL_MAX_OPEN_CONNS=20
 MYSQL_MAX_IDLE_CONNS=10
 
-# Redis Podman
+# Redis Podman (port container)
 REDIS_ADDR=192.168.54.202:6379
 REDIS_PASSWORD=
 REDIS_DB=0
@@ -171,8 +170,6 @@ TTL_PRODUCT_LIST=120
 TTL_TOP_PRODUCTS=600
 TTL_DASHBOARD=60
 ```
-
-> **Catatan Host IP**: Jika MySQL Anda hanya mendengarkan loopback, Anda bisa menggunakan `127.0.0.1:3306` pada `MYSQL_DSN`. Jika MySQL Anda mengizinkan bind address umum (`0.0.0.0`), gunakan `192.168.54.202:3306`.
 
 ---
 
@@ -247,20 +244,20 @@ make run
 ```
 
 Server akan aktif dan siap menerima request di:
-`http://192.168.54.202:8080` (dan `http://localhost:8080`).
+`http://localhost:8080`
 
 ---
 
 ## 📡 Dokumentasi Endpoint API
 
-Base URL: `http://192.168.54.202:8080`
+Base URL: `http://localhost:8080`
 
 ### 1. Health Check
 - **GET** `/health`
 - **Deskripsi**: Cek status konektivitas MySQL dan Redis.
 - **Contoh Request**:
   ```bash
-  curl -i http://192.168.54.202:8080/health
+  curl -i http://localhost:8080/health
   ```
 - **Contoh Response**:
   ```json
@@ -282,7 +279,7 @@ Base URL: `http://192.168.54.202:8080`
 - **TTL**: 300 detik
 - **Contoh Request**:
   ```bash
-  curl -i http://192.168.54.202:8080/products/1
+  curl -i http://localhost:8080/products/1
   ```
 - **Header Hasil**:
   - Request 1: `X-Cache: MISS`, `X-Response-Time: ~8.5ms`
@@ -296,7 +293,7 @@ Base URL: `http://192.168.54.202:8080`
 - **TTL**: 120 detik
 - **Contoh Request**:
   ```bash
-  curl -i "http://192.168.54.202:8080/products?category_id=1&page=1&limit=10"
+  curl -i "http://localhost:8080/products?category_id=1&page=1&limit=10"
   ```
 
 ---
@@ -308,7 +305,7 @@ Base URL: `http://192.168.54.202:8080`
 - **Query SQL**: Melakukan `JOIN` antara 500.000 `order_items` dengan `products`, lalu `GROUP BY` dan `SUM(quantity)`.
 - **Contoh Request**:
   ```bash
-  curl -i "http://192.168.54.202:8080/products/top?limit=10"
+  curl -i "http://localhost:8080/products/top?limit=10"
   ```
 - **Perbedaan Latency**:
   - Request 1 (MySQL): ~150ms - 400ms (`X-Cache: MISS`)
@@ -322,7 +319,7 @@ Base URL: `http://192.168.54.202:8080`
 - **TTL**: 60 detik
 - **Contoh Request**:
   ```bash
-  curl -i http://192.168.54.202:8080/stats/dashboard
+  curl -i http://localhost:8080/stats/dashboard
   ```
 - **Contoh Response**:
   ```json
@@ -343,7 +340,7 @@ Base URL: `http://192.168.54.202:8080`
 - **Invalidasi**: Menaikkan `products:list:version` via Redis `INCR`.
 - **Contoh Request**:
   ```bash
-  curl -i -X POST http://192.168.54.202:8080/products \
+  curl -i -X POST http://localhost:8080/products \
     -H "Content-Type: application/json" \
     -d '{
       "category_id": 1,
@@ -361,7 +358,7 @@ Base URL: `http://192.168.54.202:8080`
 - **Invalidasi**: Menghapus `DEL product:{id}` + menaikkan `products:list:version`.
 - **Contoh Request**:
   ```bash
-  curl -i -X PUT http://192.168.54.202:8080/products/1 \
+  curl -i -X PUT http://localhost:8080/products/1 \
     -H "Content-Type: application/json" \
     -d '{
       "category_id": 1,
@@ -379,7 +376,7 @@ Base URL: `http://192.168.54.202:8080`
 - **Invalidasi**: Menghapus `DEL product:{id}` + menaikkan `products:list:version`.
 - **Contoh Request**:
   ```bash
-  curl -i -X DELETE http://192.168.54.202:8080/products/1
+  curl -i -X DELETE http://localhost:8080/products/1
   ```
 
 ---
@@ -389,7 +386,7 @@ Base URL: `http://192.168.54.202:8080`
 - **Invalidasi**: Tidak ada (mengandalkan TTL statistik / Eventual Consistency).
 - **Contoh Request**:
   ```bash
-  curl -i -X POST http://192.168.54.202:8080/orders \
+  curl -i -X POST http://localhost:8080/orders \
     -H "Content-Type: application/json" \
     -d '{
       "customer_name": "Andi Pratama",
@@ -407,7 +404,7 @@ Base URL: `http://192.168.54.202:8080`
 - **Deskripsi**: Menghapus seluruh isi Redis cache (`FLUSHDB`) untuk reset benchmark.
 - **Contoh Request**:
   ```bash
-  curl -i -X DELETE http://192.168.54.202:8080/debug/cache
+  curl -i -X DELETE http://localhost:8080/debug/cache
   ```
 
 ---
@@ -422,29 +419,29 @@ Pengujian performa dilakukan menggunakan tool [`hey`](https://github.com/rakyll/
    ```bash
    # Cache OFF (Bypass)
    # Set CACHE_ENABLED=false di .env, restart app, lalu jalankan:
-   hey -n 1000 -c 50 http://192.168.54.202:8080/products/top
+   hey -n 1000 -c 50 http://localhost:8080/products/top
 
    # Cache ON
    # Set CACHE_ENABLED=true di .env, warm up 1 request, lalu jalankan:
-   hey -n 1000 -c 50 http://192.168.54.202:8080/products/top
+   hey -n 1000 -c 50 http://localhost:8080/products/top
    ```
 
 2. **Dashboard Summary**:
    ```bash
    # Cache OFF
-   hey -n 1000 -c 50 http://192.168.54.202:8080/stats/dashboard
+   hey -n 1000 -c 50 http://localhost:8080/stats/dashboard
 
    # Cache ON
-   hey -n 1000 -c 50 http://192.168.54.202:8080/stats/dashboard
+   hey -n 1000 -c 50 http://localhost:8080/stats/dashboard
    ```
 
 3. **Detail Produk**:
    ```bash
    # Cache OFF
-   hey -n 5000 -c 100 http://192.168.54.202:8080/products/1
+   hey -n 5000 -c 100 http://localhost:8080/products/1
 
    # Cache ON
-   hey -n 5000 -c 100 http://192.168.54.202:8080/products/1
+   hey -n 5000 -c 100 http://localhost:8080/products/1
    ```
 
 ---
@@ -482,7 +479,7 @@ Untuk membuktikan API tetap berjalan normal jika Redis tiba-tiba mati:
    ```
 3. Lakukan request ke endpoint produk:
    ```bash
-   curl -i http://192.168.54.202:8080/products/1
+   curl -i http://localhost:8080/products/1
    ```
 4. **Hasil**:
    - HTTP Status tetap `200 OK`.
@@ -507,7 +504,7 @@ Request selanjutnya otomatis kembali normal dan menikmati percepatan cache (`X-C
 | `make redis-cli` | Masuk ke interactive console Redis CLI di Podman |
 | `make migrate` | Menjalankan DDL migrasi database MySQL |
 | `make seed` | Mengisi data dummy (20 kategori, 5k produk, 200k orders) |
-| `make run` | Menjalankan REST API server di `http://192.168.54.202:8080` |
+| `make run` | Menjalankan REST API server di `http://localhost:8080` |
 | `make build` | Melakukan kompilasi binary API dan Seeder ke folder `bin/` |
 
 ---

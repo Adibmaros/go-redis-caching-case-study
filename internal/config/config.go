@@ -36,7 +36,7 @@ func Load() *Config {
 		AppPort:          getEnv("APP_PORT", "8080"),
 		AppHost:          getEnv("APP_HOST", "0.0.0.0"),
 		AppEnv:           getEnv("APP_ENV", "development"),
-		MySQLDSN:         getEnv("MYSQL_DSN", "root:@tcp(192.168.54.202:3306)/redis_case?parseTime=true&charset=utf8mb4"),
+		MySQLDSN:         getEnv("MYSQL_DSN", "root:@tcp(localhost:3306)/redis_case?parseTime=true&charset=utf8mb4"),
 		MySQLMaxOpenConns: getEnvInt("MYSQL_MAX_OPEN_CONNS", 20),
 		MySQLMaxIdleConns: getEnvInt("MYSQL_MAX_IDLE_CONNS", 10),
 		RedisAddr:        getEnv("REDIS_ADDR", "192.168.54.202:6379"),
